@@ -9,9 +9,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 
-  
 <body>
-
 <header>
   <h1>🌍 Air Fingerprint IoT Dashboard</h1>
   <p id="statusMsg">Connecting...</p>
@@ -22,7 +20,6 @@
 </div>
 
 <main class="dashboard">
-
   <div class="card">
     <h2><i class="fas fa-wind"></i> Air Quality</h2>
     <div class="value" id="air">--</div>
@@ -49,7 +46,6 @@
     <h2><i class="fas fa-exclamation-triangle"></i> Alert Status</h2>
     <div class="value" id="alertState">--</div>
   </div>
-
 </main>
 
 <footer>
@@ -57,84 +53,80 @@
 </footer>
 
 <script>
-// ✅ ThingSpeak Details
+// ThingSpeak Channel Setup ✅
 const channelId = 3126084;
-let labelsArr = [];
-let tempArr = [];
-let humArr = [];
 
-// ✅ Chart Setup
+// Arrays for live charts
+let labelsArr = [], tempArr = [], humArr = [];
+
+// Chart initialization
 const tempChart = new Chart(document.getElementById("tempChart"), {
   type: "line",
-  data: { labels: labelsArr, datasets: [{ data: tempArr, tension: 0.4 }] },
-  options: { plugins: { legend: { display: false }}, scales: { x: { display: false }}}
+  data: { labels: labelsArr, datasets: [{ data: tempArr, tension: 0.4 }]},
+  options: { scales: { x: { display: false }}, plugins: { legend: { display: false }}}
 });
-
 const humChart = new Chart(document.getElementById("humChart"), {
   type: "line",
-  data: { labels: labelsArr, datasets: [{ data: humArr, tension: 0.4 }] },
-  options: { plugins: { legend: { display: false }}, scales: { x: { display: false }}}
+  data: { labels: labelsArr, datasets: [{ data: humArr, tension: 0.4 }]},
+  options: { scales: { x: { display: false }}, plugins: { legend: { display: false }}}
 });
 
-// ✅ Fetch + Update UI
-async function fetchData() {
-  try {
+// Fetch real-time data
+async function fetchData(){
+  try{
     const response = await fetch(
-      `https://api.thingspeak.com/channels/${channelId}/feeds.json?results=10`
+        `https://api.thingspeak.com/channels/${channelId}/feeds.json?results=10`
     );
     const data = await response.json();
-    const latest = data.feeds[data.feeds.length - 1];
+    const latest = data.feeds[data.feeds.length-1];
 
-    let mq = Number(latest.field1);
+    let mqValue = Number(latest.field1);
     let temp = Number(latest.field2);
     let hum = Number(latest.field3);
-    let noise = Number(latest.field4);
-    let alert = Number(latest.field5);
+    let noiseVal = Number(latest.field4);
+    let alertVal = Number(latest.field5);
 
-    // ✅ Value Updates
     document.getElementById("temp").innerText = `${temp} °C`;
     document.getElementById("hum").innerText = `${hum} %`;
-    document.getElementById("noise").innerText = noise === 1 ? "HIGH" : "LOW";
+    document.getElementById("noise").innerText = noiseVal ? "HIGH" : "LOW";
 
-    // ✅ Air Quality Classification
-    let airStatus =
-      mq > 700 ? "POOR" : mq > 400 ? "MODERATE" : "GOOD";
+    // Air Quality Classification ✅
+    let airStatus = (mqValue > 700) ? "POOR" :
+                    (mqValue > 400) ? "MODERATE" : "GOOD";
     document.getElementById("air").innerText = airStatus;
     document.getElementById("air").className = `value ${airStatus}`;
 
-    // ✅ Alert State ⚠ One Light System
-    const alertText = ["SAFE", "MODERATE", "DANGER"][alert];
-    const alertClass = ["safe", "moderate", "danger"][alert];
+    // Alert status ✅
+    const alerts = ["SAFE","MODERATE","DANGER"];
+    const alertClasses = ["safe","moderate","danger"];
 
-    document.getElementById("alertState").innerText = alertText;
-    document.getElementById("alertText").innerText = alertText;
+    document.getElementById("alertState").innerText = alerts[alertVal];
+    document.getElementById("alertText").innerText = alerts[alertVal];
     document.getElementById("alertBanner").className =
-      "alert-banner " + alertClass;
+      "alert-banner " + alertClasses[alertVal];
 
-    // ✅ Chart Live Update
+    // Chart update
     labelsArr.push(new Date().toLocaleTimeString());
     tempArr.push(temp);
     humArr.push(hum);
 
-    if (labelsArr.length > 10) {
+    if(labelsArr.length > 10){
       labelsArr.shift();
       tempArr.shift();
       humArr.shift();
     }
-
     tempChart.update();
     humChart.update();
 
     document.getElementById("statusMsg").innerText = "LIVE ✅";
-  } catch (err) {
+  }
+  catch(err){
     document.getElementById("statusMsg").innerText = "Disconnected ❌";
   }
 }
 
-// ✅ Auto Update Every 20 Sec
 fetchData();
 setInterval(fetchData, 20000);
 </script>
-
 </body>
 </html>
