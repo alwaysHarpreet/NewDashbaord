@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IoT Air-Quality Dashboard</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide/dist/lucide.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <meta name="description" content="IoT Air Quality Monitoring Dashboard - ThingSpeak live visualizer" />
+
+  <style>
+    /* Minimal custom CSS for animations beyond Tailwind utilities */
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      50% { transform: translateX(6px); }
+      75% { transform: translateX(-4px); }
+      100% { transform: translateX(0); }
+    }
+    .danger-shake { animation: shake 0.6s linear infinite; }
+    @keyframes pulse-yellow {
+      0% { box-shadow: 0 0 0 0 rgba(250,204,21,0.25); }
+      70% { box-shadow: 0 0 0 12px rgba(250,204,21,0); }
+      100% { box-shadow: 0 0 0 0 rgba(250,204,21,0); }
+    }
+    .pulse-yellow { animation: pulse-yellow 2s infinite; }
+    @keyframes buzzer-vibe {
+      0% { transform: translateY(0); }
+      20% { transform: translateY(-2px) rotate(-1deg); }
+      40% { transform: translateY(2px) rotate(1deg); }
+      60% { transform: translateY(-1px) rotate(-1deg); }
+      100% { transform: translateY(0); }
+    }
+    .vibrate { animation: buzzer-vibe 0.5s linear infinite; }
+    /* translucent glass */
+    .glass { background: rgba(14,23,33,0.36); border: 1px solid rgba(255,255,255,0.04); backdrop-filter: blur(8px); }
+    /* small custom scrollbar for notification panel */
+    .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 8px; }
+  </style>
+</head>
+<body class="h-full bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 text-slate-100 antialiased font-inter">
+  <div class="flex h-full">
+    <!-- SIDEBAR -->
+    <aside class="w-20 md:w-72 fixed inset-y-0 left-0 z-50 glass shadow-2xl flex flex-col items-center md:items-stretch py-6 px-2 md:px-5">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold shadow-md">AQ</div>
+        <div class="hidden md:block">
+          <div class="text-sm font-semibold">Air Monitor</div>
+          <div class="text-xs text-slate-300">Real-time IoT Dashboard</div>
+        </div>
+      </div>
+
+      <nav class="flex-1 w-full">
+        <ul class="space-y-2">
+          <li>
+            <a href="#overview" class="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition">
+              <i data-lucide="home" class="lucide w-5 h-5 text-cyan-300"></i>
+              <span class="hidden md:inline">Overview</span>
+            </a>
+          </li>
+          <li>
+            <a href="#alerts" class="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition">
+              <i data-lucide="alert-triangle" class="lucide w-5 h-5 text-yellow-300"></i>
+              <span class="hidden md:inline">Alerts</span>
+            </a>
+          </li>
+          <li>
+            <a href="#graphs" class="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition">
+              <i data-lucide="bar-chart-2" class="lucide w-5 h-5 text-violet-300"></i>
+              <span class="hidden md:inline">Graphs</span>
+            </a>
+          </li>
+          <li>
+            <a href="#settings" class="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition">
+              <i data-lucide="settings" class="lucide w-5 h-5 text-sky-300"></i>
+              <span class="hidden md:inline">Settings</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="mt-auto hidden md:block">
+        <div class="text-xs text-slate-400">v1.0.0</div>
+        <a href="https://github.com/your/repo" target="_blank" class="text-xs text-sky-300 hover:underline">GitHub</a>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 ml-20 md:ml-72">
+      <!-- HEADER -->
+      <header class="glass sticky top-0 z-40 backdrop-blur-xl border-b border-slate-800/40">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
+          <div class="flex items-center gap-4">
+            <button id="sidebarToggle" class="md:hidden p-2 rounded-md hover:bg-white/5"><i data-lucide="menu" class="lucide w-5 h-5"></i></button>
+            <div class="text-sm text-slate-300">IoT Air Quality Monitoring</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 px-3 py-1 rounded-lg bg-white/3">
+              <i data-lucide="clock" class="lucide w-4 h-4 text-slate-200"></i>
+              <div id="clock" class="text-sm font-medium">--:--:--</div>
+            </div>
+
+            <div id="wifi" class="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/3">
+              <i data-lucide="wifi" class="lucide w-4 h-4 text-green-400"></i>
+              <span class="text-sm">Online</span>
+            </div>
+
+            <button id="refreshBtn" class="p-2 rounded-lg bg-white/3 hover:bg-white/5" title="Force refresh">
+              <i data-lucide="refresh-cw" class="lucide w-5 h-5"></i>
+            </button>
+
+            <button id="toggleNotif" class="p-2 rounded-lg bg-white/3 hover:bg-white/5" title="Notifications">
+              <i data-lucide="bell" class="lucide w-5 h-5"></i>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <section class="container mx-auto px-4 py-6 space-y-6">
+        <!-- ROW 1: Stat Cards -->
+        <div id="overview" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Temperature -->
+          <div id="card-temp" class="glass p-4 rounded-2xl relative overflow-hidden">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <i data-lucide="thermometer" class="lucide w-6 h-6 text-amber-400"></i>
+                  <h3 class="text-sm font-semibold">Temperature</h3>
+                </div>
+                <div class="mt-3 flex items-baseline gap-2">
+                  <div id="val-temp" class="text-3xl font-bold">--°C</div>
+                  <div class="text-sm text-slate-300">Current</div>
+                </div>
+              </div>
+              <div class="w-20 h-20">
+                <!-- Circular progress SVG -->
+                <svg viewBox="0 0 36 36" class="w-20 h-20">
+                  <path class="text-slate-700" stroke="rgba(255,255,255,0.06)" stroke-width="3" fill="none" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831a15.9155 15.9155 0 0 1 0-31.831"></path>
+                  <path id="prog-temp" stroke="#F59E0B" stroke-width="3" fill="none" stroke-linecap="round" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831a15.9155 15.9155 0 0 1 0-31.831" stroke-dasharray="0 100"></path>
+                </svg>
+              </div>
+            </div>
+            <div id="hint-temp" class="absolute -bottom-3 -right-6 opacity-20 text-xs transform rotate-12 tracking-wide">--</div>
+          </div>
+
+          <!-- Humidity -->
+          <div id="card-hum" class="glass p-4 rounded-2xl relative overflow-hidden">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <i data-lucide="droplet" class="lucide w-6 h-6 text-sky-400"></i>
+                  <h3 class="text-sm font-semibold">Humidity</h3>
+                </div>
+                <div class="mt-3 flex items-baseline gap-2">
+                  <div id="val-hum" class="text-3xl font-bold">--%</div>
+                  <div class="text-sm text-slate-300">Current</div>
+                </div>
+              </div>
+              <div class="w-20 h-20">
+                <svg viewBox="0 0 36 36" class="w-20 h-20">
+                  <path stroke="rgba(255,255,255,0.06)" stroke-width="3" fill="none" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831"></path>
+                  <path id="prog-hum" stroke="#38BDF8" stroke-width="3" fill="none" stroke-linecap="round" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831" stroke-dasharray="0 100"></path>
+                </svg>
+              </div>
+            </div>
+            <div id="hint-hum" class="absolute -bottom-3 -right-6 opacity-20 text-xs transform rotate-12 tracking-wide">--</div>
+          </div>
+
+          <!-- Gas / Air Quality -->
+          <div id="card-gas" class="glass p-4 rounded-2xl relative overflow-hidden">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <i data-lucide="cloud" class="lucide w-6 h-6 text-lime-400"></i>
+                  <h3 class="text-sm font-semibold">Air Quality (Gas)</h3>
+                </div>
+                <div class="mt-3 flex items-baseline gap-2">
+                  <div id="val-gas" class="text-3xl font-bold">--</div>
+                  <div class="text-sm text-slate-300">AQI (Relative)</div>
+                </div>
+              </div>
+              <div class="w-20 h-20">
+                <svg viewBox="0 0 36 36" class="w-20 h-20">
+                  <path stroke="rgba(255,255,255,0.06)" stroke-width="3" fill="none" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831"></path>
+                  <path id="prog-gas" stroke="#84cc16" stroke-width="3" fill="none" stroke-linecap="round" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831" stroke-dasharray="0 100"></path>
+                </svg>
+              </div>
+            </div>
+            <div id="hint-gas" class="absolute -bottom-3 -right-6 opacity-20 text-xs transform rotate-12 tracking-wide">--</div>
+          </div>
+
+          <!-- Sound -->
+          <div id="card-sound" class="glass p-4 rounded-2xl relative overflow-hidden">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <i data-lucide="volume" class="lucide w-6 h-6 text-rose-400"></i>
+                  <h3 class="text-sm font-semibold">Sound Level</h3>
+                </div>
+                <div class="mt-3 flex items-baseline gap-2">
+                  <div id="val-sound" class="text-3xl font-bold">-- dB</div>
+                  <div class="text-sm text-slate-300">Ambient</div>
+                </div>
+              </div>
+              <div class="w-20 h-20">
+                <svg viewBox="0 0 36 36" class="w-20 h-20">
+                  <path stroke="rgba(255,255,255,0.06)" stroke-width="3" fill="none" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831"></path>
+                  <path id="prog-sound" stroke="#fb7185" stroke-width="3" fill="none" stroke-linecap="round" d="M18 2.0845a15.9155 15.9155 0 0 1 0 31.831" stroke-dasharray="0 100"></path>
+                </svg>
+              </div>
+            </div>
+            <div id="hint-sound" class="absolute -bottom-3 -right-6 opacity-20 text-xs transform rotate-12 tracking-wide">--</div>
+          </div>
+        </div>
+
+        <!-- ROW 2: Buzzer / Alert Card -->
+        <div id="alerts" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 glass p-6 rounded-2xl">
+            <div class="flex items-start justify-between">
+              <div>
+                <h2 class="text-xl font-semibold">Alerts & Buzzer</h2>
+                <p class="text-sm text-slate-300">Buzzer status and acknowledgement controls</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <label class="flex items-center gap-2">
+                  <input id="soundToggle" type="checkbox" class="hidden peer" />
+                  <div class="w-10 h-6 bg-white/6 rounded-full relative p-0.5 peer-checked:bg-rose-500 transition"></div>
+                  <span class="text-sm text-slate-300">Sound alert</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Big Buzzer card -->
+              <div id="buzzerCard" class="glass p-4 rounded-xl flex items-center gap-4">
+                <div id="buzzerIcon" class="p-3 rounded-lg bg-white/3">
+                  <i data-lucide="speaker" class="lucide w-7 h-7 text-emerald-300"></i>
+                </div>
+                <div class="flex-1">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-sm font-semibold">Buzzer</div>
+                      <div id="buzzerText" class="text-lg font-bold text-slate-100">OFF</div>
+                    </div>
+                    <div>
+                      <button id="ackBtn" class="px-3 py-1 rounded-md bg-white/4 hover:bg-white/6">Acknowledge</button>
+                    </div>
+                  </div>
+                  <div id="buzzerNote" class="mt-3 text-sm text-slate-300">No active alarm</div>
+                </div>
+              </div>
+
+              <!-- Alert Banner & history -->
+              <div class="glass p-4 rounded-xl">
+                <div id="alertBannerPlaceholder">
+                  <!-- dynamic banners will be inserted here -->
+                </div>
+                <div class="mt-4 text-sm text-slate-300">
+                  <div><strong>Rules:</strong> Medium = Yellow (Warning), Danger = Red (Immediate)</div>
+                  <div>Click "Acknowledge" to mute buzzer display for 30s.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right small cards summary -->
+          <div class="glass p-6 rounded-2xl">
+            <h3 class="text-lg font-semibold">Quick Status</h3>
+            <div class="mt-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="text-sm text-slate-300">System Status</div>
+                <div id="sysStatus" class="text-sm font-medium text-emerald-300">OK</div>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="text-sm text-slate-300">Last Update</div>
+                <div id="lastUpdate" class="text-sm text-slate-300">--</div>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="text-sm text-slate-300">Notifications</div>
+                <div id="notifCount" class="text-sm font-medium text-amber-300">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ROW 3: Graphs -->
+        <div id="graphs" class="glass p-4 rounded-2xl">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <h2 class="text-lg font-semibold">Live Graphs</h2>
+              <div class="text-sm text-slate-400">Auto-updates every 15s</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <button class="px-3 py-1 rounded-md bg-white/4">1h</button>
+              <button class="px-3 py-1 rounded-md bg-white/4">6h</button>
+              <button class="px-3 py-1 rounded-md bg-white/4">24h</button>
+            </div>
+          </div>
+
+          <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="p-3 bg-slate-900/30 rounded-xl">
+              <canvas id="chartTemp" height="120"></canvas>
+            </div>
+            <div class="p-3 bg-slate-900/30 rounded-xl">
+              <canvas id="chartHum" height="120"></canvas>
+            </div>
+            <div class="p-3 bg-slate-900/30 rounded-xl">
+              <canvas id="chartGasSound" height="120"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- FOOTER -->
+        <footer class="text-sm text-slate-400 text-center py-6">
+          <div>Dashboard v1.0 • <a href="https://github.com/your/repo" target="_blank" class="text-sky-300 hover:underline">GitHub</a></div>
+          <div class="text-xs mt-2">Set your ThingSpeak channel ID in the script of this page. Respect ThingSpeak rate limits (>=15s).</div>
+        </footer>
+      </section>
+    </main>
+
+    <!-- RIGHT FLOATING NOTIFICATIONS PANEL -->
+    <div id="notifPanel" class="fixed right-4 bottom-8 w-96 max-w-full glass rounded-xl shadow-2xl p-4 z-50 translate-y-10 opacity-0 pointer-events-none transition-all">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm font-semibold">Notifications</div>
+        <div class="flex items-center gap-2">
+          <button id="clearNotifs" class="text-xs px-2 py-1 bg-white/4 rounded">Clear</button>
+          <button id="closeNotifPanel" class="p-1 rounded hover:bg-white/5"><i data-lucide="x" class="lucide w-4 h-4"></i></button>
+        </div>
+      </div>
+      <div id="notifList" class="space-y-3 max-h-72 overflow-auto scrollbar-thin">
+        <!-- inserted notifications -->
+      </div>
+    </div>
+
+    <!-- audio context fallback (optional) -->
+    <audio id="dangerSound" src=""></audio>
+
+  </div>
+
+  <!-- JS -->
+  <script>
+    // Replace with your ThingSpeak channel ID and optional read API key
+    const channelId = "YOUR_CHANNEL_ID"; // e.g., "123456"
+    const readApiKey = ""; // optional: "YOUR_READ_API_KEY"
+
+    // ThingSpeak fetch interval (ms) - keep >= 15000 for public channel to be polite
+    const FETCH_INTERVAL = 15000;
+
+    // Sensor threshold config (adjust to your sensor scale)
+    const thresholds = {
+      gas: { medium: 60, danger: 85 }, // relative gas level thresholds
+      sound: { medium: 65, danger: 85 }, // dB thresholds
+      temp: { medium: 30, danger: 40 } // degC thresholds (optional)
+    };
+
+    // Application state
+    let lastFeed = null;
+    let notifications = [];
+    let buzzerMutedUntil = 0;
+    let dangerSoundEnabled = false;
+    let charts = {};
+    let chartData = {
+      temp: [],
+      hum: [],
+      gas: [],
+      sound: [],
+      times: []
+    };
+
+    // DOM refs
+    const $ = id => document.getElementById(id);
+    const progTemp = $('prog-temp');
+    const progHum = $('prog-hum');
+    const progGas = $('prog-gas');
+    const progSound = $('prog-sound');
+
+    const valTemp = $('val-temp');
+    const valHum = $('val-hum');
+    const valGas = $('val-gas');
+    const valSound = $('val-sound');
+
+    const cardTemp = $('card-temp');
+    const cardHum = $('card-hum');
+    const cardGas = $('card-gas');
+    const cardSound = $('card-sound');
+
+    const buzzerCard = $('buzzerCard');
+    const buzzerIcon = $('buzzerIcon');
+    const buzzerText = $('buzzerText');
+    const buzzerNote = $('buzzerNote');
+    const ackBtn = $('ackBtn');
+
+    const alertBannerPlaceholder = $('alertBannerPlaceholder');
+    const notifPanel = $('notifPanel');
+    const notifList = $('notifList');
+    const notifCount = $('notifCount');
+    const lastUpdate = $('lastUpdate');
+    const sysStatus = $('sysStatus');
+    const soundToggle = $('soundToggle');
+
+    // Initialize icons
+    lucide.replace();
+
+    // Clock & WiFi status
+    function updateClock() {
+      const now = new Date();
+      $('clock').textContent = now.toLocaleTimeString();
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Sidebar toggle for small screens (optional)
+    document.getElementById('sidebarToggle').addEventListener('click', () => {
+      const aside = document.querySelector('aside');
+      aside.classList.toggle('-translate-x-full');
+    });
+
+    // Notification panel toggle
+    document.getElementById('toggleNotif').addEventListener('click', toggleNotifPanel);
+    document.getElementById('closeNotifPanel').addEventListener('click', toggleNotifPanel);
+    document.getElementById('clearNotifs').addEventListener('click', () => {
+      notifications = [];
+      renderNotifList();
+    });
+
+    function toggleNotifPanel() {
+      if (notifPanel.classList.contains('opacity-0')) {
+        notifPanel.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
+        notifPanel.classList.add('opacity-100', 'translate-y-0');
+      } else {
+        notifPanel.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none');
+        notifPanel.classList.remove('opacity-100', 'translate-y-0');
+      }
+    }
+
+    // Sound toggle
+    soundToggle.addEventListener('change', (e) => {
+      dangerSoundEnabled = e.target.checked;
+    });
+
+    // Acknowledge button: mute buzzer display for 30 seconds
+    ackBtn.addEventListener('click', () => {
+      buzzerMutedUntil = Date.now() + 30_000;
+      addNotification('Buzzer acknowledged for 30 seconds', 'info');
+      updateBuzzerUI({buzzer: 0}); // temporarily hide effect
+      setTimeout(() => { /* UI will update on next fetch */ }, 30_000);
+    });
+
+    // Force refresh
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      fetchLatest();
+    });
+
+    // Helper: ThingSpeak feed endpoint (last feed)
+    function thingspeakURL() {
+      const base = `https://api.thingspeak.com/channels/${channelId}/feeds/last.json`;
+      return readApiKey ? `${base}?api_key=${readApiKey}` : base;
+    }
+
+    // Fetch latest data
+    async function fetchLatest() {
+      if (!channelId || channelId === "YOUR_CHANNEL_ID") {
+        // No channel configured - fallback to demo/random for preview
+        simulateData();
+        return;
+      }
+
+      try {
+        const res = await fetch(thingspeakURL(), { cache: "no-store" });
+        if (!res.ok) throw new Error("Network response not ok");
+        const feed = await res.json();
+        lastFeed = feed;
+        processFeed(feed);
+        sysStatus.textContent = "OK";
+        sysStatus.classList.remove('text-amber-300', 'text-rose-400');
+        sysStatus.classList.add('text-emerald-300');
+      } catch (err) {
+        // network error: show offline
+        sysStatus.textContent = "Offline";
+        sysStatus.classList.remove('text-emerald-300');
+        sysStatus.classList.add('text-rose-400');
+        console.error("Fetch error", err);
+        // Optionally fallback to simulated data
+        simulateData();
+      }
+    }
+
+    // Simulated demo data (used when no channelId configured)
+    function simulateData() {
+      const now = new Date();
+      const feed = {
+        created_at: now.toISOString(),
+        field1: (20 + Math.random() * 10).toFixed(1), // temp
+        field2: (40 + Math.random() * 30).toFixed(1), // hum
+        field3: (30 + Math.random() * 70).toFixed(0), // gas
+        field4: (30 + Math.random() * 50).toFixed(0), // sound
+        field5: Math.random() > 0.95 ? 2 : Math.random() > 0.85 ? 1 : 0 // buzzer
+      };
+      lastFeed = feed;
+      processFeed(feed);
+    }
+
+    // Convert stroke dash from value (0-100)
+    function setCircularProgress(elem, pct) {
+      pct = Math.max(0, Math.min(100, pct));
+      const dash = `${pct} ${100 - pct}`;
+      elem.setAttribute('stroke-dasharray', dash);
+    }
+
+    // Update charts
+    function initCharts() {
+      const ctxT = document.getElementById('chartTemp').getContext('2d');
+      charts.temp = new Chart(ctxT, {
+        type: 'line',
+        data: { labels: chartData.times, datasets: [{ label: 'Temperature (°C)', data: chartData.temp, borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,0.08)', tension: 0.3 }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false } } }
+      });
+
+      const ctxH = document.getElementById('chartHum').getContext('2d');
+      charts.hum = new Chart(ctxH, {
+        type: 'line',
+        data: { labels: chartData.times, datasets: [{ label: 'Humidity (%)', data: chartData.hum, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.06)', tension: 0.3 }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false } } }
+      });
+
+      const ctxGS = document.getElementById('chartGasSound').getContext('2d');
+      charts.gasSound = new Chart(ctxGS, {
+        type: 'line',
+        data: {
+          labels: chartData.times,
+          datasets: [
+            { label: 'Gas', data: chartData.gas, borderColor: '#84cc16', backgroundColor: 'rgba(132,204,22,0.06)', tension: 0.3 },
+            { label: 'Sound (dB)', data: chartData.sound, borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.04)', tension: 0.3, yAxisID: 'y1' }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            x: { display: false },
+            y: { position: 'left' },
+            y1: { position: 'right', grid: { drawOnChartArea: false } }
+          }
+        }
+      });
+    }
+
+    // Add data to chart arrays (trim to moderate length)
+    function pushChartValues(timeLabel, t, h, g, s) {
+      chartData.times.push(timeLabel);
+      chartData.temp.push(Number(t));
+      chartData.hum.push(Number(h));
+      chartData.gas.push(Number(g));
+      chartData.sound.push(Number(s));
+      // limit length to last 30 points
+      ['times','temp','hum','gas','sound'].forEach(k => {
+        if (chartData[k].length > 30) chartData[k].shift();
+      });
+      // update chart instances
+      if (charts.temp) charts.temp.update();
+      if (charts.hum) charts.hum.update();
+      if (charts.gasSound) charts.gasSound.update();
+    }
+
+    // Process feed from ThingSpeak
+    function processFeed(feed) {
+      const t = feed.field1 !== null ? Number(feed.field1) : null;
+      const h = feed.field2 !== null ? Number(feed.field2) : null;
+      const g = feed.field3 !== null ? Number(feed.field3) : null;
+      const s = feed.field4 !== null ? Number(feed.field4) : null;
+      const buz = feed.field5 !== null ? Number(feed.field5) : 0;
+
+      // Update stat cards
+      updateStatCard('temp', t);
+      updateStatCard('hum', h);
+      updateStatCard('gas', g);
+      updateStatCard('sound', s);
+
+      // Update buzzer and alerts
+      updateBuzzerUI({buzzer: buz, t, h, g, s});
+
+      // Charts
+      const shortTime = new Date(feed.created_at || Date.now()).toLocaleTimeString();
+      pushChartValues(shortTime, t || 0, h || 0, g || 0, s || 0);
+
+      // last update
+      lastUpdate.textContent = new Date(feed.created_at || Date.now()).toLocaleString();
+    }
+
+    // Update stat visual card based on value and thresholds
+    function updateStatCard(kind, value) {
+      const elVal = kind === 'temp' ? valTemp : kind === 'hum' ? valHum : kind === 'gas' ? valGas : valSound;
+      if (value === null || value === undefined || isNaN(value)) {
+        elVal.textContent = '--';
+        return;
+      }
+
+      // Format display
+      let text = value;
+      if (kind === 'temp') text = `${value.toFixed(1)}°C`;
+      else if (kind === 'hum') text = `${value.toFixed(0)}%`;
+      else if (kind === 'gas') text = `${value}`; // raw
+      else if (kind === 'sound') text = `${value} dB`;
+
+      elVal.textContent = text;
+
+      // Progress mapping (map value ranges to 0-100)
+      let pct = 0;
+      if (kind === 'temp') pct = Math.min(100, Math.round((value / 50) * 100));
+      if (kind === 'hum') pct = Math.min(100, Math.round(value));
+      if (kind === 'gas') pct = Math.min(100, Math.round(value)); // assuming gas scale normalized 0-100
+      if (kind === 'sound') pct = Math.min(100, Math.round((value / 120) * 100));
+
+      // set circle progress
+      const map = { temp: progTemp, hum: progHum, gas: progGas, sound: progSound };
+      setCircularProgress(map[kind], pct);
+
+      // Animate pulse/alert depending on thresholds
+      const cardMap = { temp: cardTemp, hum: cardHum, gas: cardGas, sound: cardSound };
+      const cardEl = cardMap[kind];
+      cardEl.classList.remove('ring-4', 'ring-yellow-400', 'ring-red-500', 'pulse-yellow', 'danger-shake', 'vibrate');
+
+      // Determine status
+      let status = 'normal';
+      const cfg = thresholds[kind] || { medium: 9999, danger: 9999 };
+      if (value >= cfg.danger) status = 'danger';
+      else if (value >= cfg.medium) status = 'medium';
+
+      if (status === 'normal') {
+        // small green glow
+        cardEl.classList.add('shadow-lg');
+        cardEl.style.boxShadow = '0 8px 24px rgba(6,95,70,0.05)';
+      } else if (status === 'medium') {
+        // yellow glow + pulse
+        cardEl.classList.add('ring-4', 'ring-yellow-400', 'pulse-yellow');
+        addNotification(`⚠️ Warning: Medium ${kind.toUpperCase()} Risk Detected!`, 'warning');
+      } else if (status === 'danger') {
+        // red jitter
+        cardEl.classList.add('ring-4', 'ring-red-500', 'danger-shake');
+        addNotification(`🚨 DANGER! ${kind.toUpperCase()} Unsafe!`, 'danger');
+        if (dangerSoundEnabled) playDangerSound();
+      }
+      // small visual update pulse
+      cardEl.animate([{ opacity: 0.8 }, { opacity: 1 }], { duration: 500, easing: 'ease-in-out' });
+    }
+
+    // Handle buzzer UI and alert banners
+    function updateBuzzerUI({ buzzer = 0, t=null, h=null, g=null, s=null }) {
+      const now = Date.now();
+      const isMuted = buzzerMutedUntil > now;
+      if (isMuted) {
+        buzzerText.textContent = 'ACKED';
+        buzzerNote.textContent = 'Muted for 30s';
+        buzzerIcon.classList.remove('vibrate');
+        buzzerIcon.querySelector('i').setAttribute('data-lucide', 'bell-off');
+        lucide.replace();
+        return;
+      }
+      // buzzer: 0 normal, 1 medium, 2 danger
+      if (buzzer === 0) {
+        buzzerText.textContent = 'OFF';
+        buzzerNote.textContent = 'No buzzer active';
+        buzzerIcon.classList.remove('vibrate');
+        buzzerIcon.querySelector('i').setAttribute('data-lucide', 'speaker');
+      } else if (buzzer === 1) {
+        buzzerText.textContent = 'ON (MED)';
+        buzzerNote.textContent = 'Medium alert';
+        buzzerIcon.classList.add('vibrate');
+        buzzerIcon.querySelector('i').setAttribute('data-lucide', 'speaker');
+        addAlertBanner('⚠️ Warning: Medium Air Risk Detected!', 'warning');
+        addNotification('Medium buzzer activated', 'warning');
+      } else if (buzzer === 2) {
+        buzzerText.textContent = 'ON (DANGER)';
+        buzzerNote.textContent = 'Danger! Evacuate / ventilate';
+        buzzerIcon.classList.add('vibrate');
+        buzzerIcon.querySelector('i').setAttribute('data-lucide', 'zap');
+        addAlertBanner('🚨 DANGER! Air Quality Unsafe!', 'danger');
+        addNotification('Danger buzzer activated', 'danger');
+        if (dangerSoundEnabled) playDangerSound();
+      }
+      lucide.replace();
+    }
+
+    // Add persistent alert banner inside alert section
+    function addAlertBanner(text, level='info') {
+      // If already present and same text -> skip
+      if ([...alertBannerPlaceholder.children].some(ch => ch.dataset.text === text)) return;
+      const banner = document.createElement('div');
+      banner.className = 'mb-3 p-3 rounded-md';
+      banner.dataset.text = text;
+      if (level === 'warning') {
+        banner.classList.add('bg-yellow-500/10', 'border', 'border-yellow-400/20', 'text-yellow-200');
+        banner.innerHTML = `<div class="flex items-center gap-3"><i data-lucide="alert-triangle" class="w-5 h-5"></i><div>${text}</div></div>`;
+      } else if (level === 'danger') {
+        banner.classList.add('bg-red-600/10', 'border', 'border-red-500/20', 'text-red-200', 'danger-shake');
+        banner.innerHTML = `<div class="flex items-center gap-3"><i data-lucide="zap" class="w-5 h-5"></i><div>${text}</div></div>`;
+      } else {
+        banner.classList.add('bg-slate-700/10', 'text-slate-200');
+        banner.innerHTML = `<div>${text}</div>`;
+      }
+      alertBannerPlaceholder.prepend(banner);
+      lucide.replace();
+      // auto dismiss after 20s for medium banners
+      if (level === 'warning') setTimeout(()=> banner.remove(), 20000);
+    }
+
+    // Add notification to panel
+    function addNotification(text, type='info') {
+      const ts = new Date();
+      notifications.unshift({ text, type, ts });
+      if (notifications.length > 50) notifications.pop();
+      renderNotifList();
+    }
+
+    function renderNotifList() {
+      notifList.innerHTML = '';
+      notifications.forEach(n => {
+        const el = document.createElement('div');
+        el.className = 'p-3 rounded-md bg-white/2 flex items-start gap-3';
+        el.innerHTML = `<div class="w-8">${iconForType(n.type)}</div><div class="flex-1 text-sm"><div class="font-medium">${n.text}</div><div class="text-xs text-slate-400">${n.ts.toLocaleTimeString()}</div></div>`;
+        notifList.appendChild(el);
+      });
+      notifCount.textContent = notifications.length;
+    }
+
+    function iconForType(type) {
+      if (type === 'danger') return '<i data-lucide="zap" class="lucide w-5 h-5 text-red-400"></i>';
+      if (type === 'warning') return '<i data-lucide="alert-triangle" class="lucide w-5 h-5 text-yellow-400"></i>';
+      return '<i data-lucide="bell" class="lucide w-5 h-5 text-slate-300"></i>';
+    }
+
+    // Danger sound (web audio beep loop for short time)
+    let dangerOsc = null;
+    function playDangerSound() {
+      if (!dangerSoundEnabled) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.frequency.value = 720;
+        o.type = 'sawtooth';
+        o.connect(g);
+        g.connect(ctx.destination);
+        g.gain.value = 0.0001;
+        o.start();
+        // ramp up
+        g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.05);
+        // stop after 2s (short siren)
+        setTimeout(()=>{
+          g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+          setTimeout(()=> { o.stop(); ctx.close(); }, 600);
+        }, 1400);
+      } catch (e) {
+        console.warn('Audio not supported', e);
+      }
+    }
+
+    // Initial setup
+    initCharts();
+    // Seed with some simulated points
+    for (let i = 8; i >= 0; i--) {
+      const t = (20 + Math.random()*8).toFixed(1);
+      const h = (40 + Math.random()*20).toFixed(0);
+      const g = (30 + Math.random()*60).toFixed(0);
+      const s = (30 + Math.random()*50).toFixed(0);
+      const label = new Date(Date.now() - i * FETCH_INTERVAL).toLocaleTimeString();
+      chartData.times.push(label);
+      chartData.temp.push(t);
+      chartData.hum.push(h);
+      chartData.gas.push(g);
+      chartData.sound.push(s);
+    }
+    charts.temp.update();
+    charts.hum.update();
+    charts.gasSound.update();
+
+    // Polling loop
+    fetchLatest();
+    setInterval(fetchLatest, FETCH_INTERVAL);
+
+    // Start with notifications panel hidden
+    notifPanel.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none');
+
+    // Render icons inside notifications initially
+    lucide.replace();
+
+    // Accessibility: show wifi online by default
+    function setWifiOnline(online) {
+      const wifi = $('wifi');
+      if (online) {
+        wifi.querySelector('i').setAttribute('data-lucide', 'wifi');
+        wifi.querySelector('span').textContent = 'Online';
+      } else {
+        wifi.querySelector('i').setAttribute('data-lucide', 'wifi-off');
+        wifi.querySelector('span').textContent = 'Offline';
+      }
+      lucide.replace();
+    }
+    setWifiOnline(true);
+
+    // Optional: start with demo data if not configured
+    if (!channelId || channelId === "YOUR_CHANNEL_ID") {
+      addNotification('Demo mode: configure channelId in script to fetch real data.', 'info');
+    }
+  </script>
+</body>
+</html>
